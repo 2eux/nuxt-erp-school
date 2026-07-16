@@ -1,0 +1,376 @@
+# =============================================================================
+# Islamic School ERP - Prometheus Configuration
+# =============================================================================
+# Metrics collection, alerting rules, and scrape configurations.
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+  # External labels applied to every time series
+  external_labels:
+    environment: ${PROMETHEUS_ENV:-production}
+    project: erp-school
+    region: ${PROMETHEUS_REGION:-id-jkt}
+
+# -------- Alertmanager integration (uncomment and configure) --------
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# -------- Rule files containing alerting/recording rules --------
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+# -------- Scrape configurations --------
+scrape_configs:
+
+  # ---- Prometheus self-monitoring ----
+  - job_name: prometheus
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - localhost:9090
+        labels:
+          service: prometheus
+
+  # ---- Backend API (Go / Gin) ----
+  - job_name: backend
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - backend:8080
+        labels:
+          service: erp-backend
+          component: api
+
+  # ---- Frontend (Nuxt) ----
+  - job_name: frontend
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - frontend:3000
+        labels:
+          service: erp-frontend
+          component: ssr
+
+  # ---- AI Gateway ----
+  - job_name: ai-gateway
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - ai-gateway:8081
+        labels:
+          service: erp-ai-gateway
+          component: ai
+
+  # ---- PostgreSQL (requires postgres_exporter) ----
+  # Uncomment when postgres_exporter is deployed
+  # - job_name: postgresql
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets:
+  #         - postgres-exporter:9187
+  #       labels:
+  #         service: postgresql
+  #         component: database
+
+  # ---- Redis (requires redis_exporter) ----
+  # - job_name: redis
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets:
+  #         - redis-exporter:9121
+  #       labels:
+  #         service: redis
+  #         component: cache
+
+  # ---- MinIO ----
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    scheme: http
+    static_configs:
+      - targets:
+          - minio:9000
+        labels:
+          service: minio
+          component: object-storage
+
+  # ---- Qdrant ----
+  - job_name: qdrant
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - qdrant:6333
+        labels:
+          service: qdrant
+          component: vector-database
+
+  # ---- Nginx (requires nginx-prometheus-exporter or stub_status) ----
+  # - job_name: nginx
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets:
+  #         - nginx-exporter:9113
+  #       labels:
+  #         service: nginx
+  #         component: reverse-proxy
+
+  # ---- Ollama (optional) ----
+  - job_name: ollama
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - ollama:11434
+        labels:
+          service: ollama
+          component: ai-model-server
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ollama_.*
+        action: keep
+
+  # ---- Jaeger (OTEL internal metrics) ----
+  - job_name: jaeger
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - jaeger:14269
+        labels:
+          service: jaeger
+          component: tracing
+
+  # ---- Node Exporter (host-level metrics) ----
+  # Install node_exporter on each host and add targets:
+  # - job_name: node
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets:
+  #         - host-node-exporter:9100
+  #       labels:
+  #         node: docker-host
+
+# =============================================================================
+# Alerting Rules (embedded directly for simplicity)
+# =============================================================================
+# Note: In production, these should be in separate files under /etc/prometheus/alerts/
+
+# The rules below are defined as comments showing the structure.
+# Copy the alert blocks into /etc/prometheus/alerts/rules.yml for active alerts.
+
+# groups:
+#   - name: erp_alerts
+#     rules:
+#
+#       # ---- High CPU / Memory Alerts ----
+#       - alert: HighCPUUsage
+#         expr: avg(rate(process_cpu_seconds_total{job="backend"}[5m])) * 100 > 80
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: backend
+#         annotations:
+#           summary: "High CPU usage on backend"
+#           description: "Backend CPU usage is above 80% for 5 minutes (current: {{ $value }}%)"
+#           runbook_url: "https://wiki.erp-school.id/runbooks/high-cpu"
+#
+#       - alert: HighMemoryUsage
+#         expr: (process_resident_memory_bytes{job="backend"} / container_spec_memory_limit_bytes) * 100 > 85
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: backend
+#         annotations:
+#           summary: "High memory usage on backend"
+#           description: "Backend memory usage is above 85% for 5 minutes"
+#
+#       # ---- Service Down Alerts ----
+#       - alert: ServiceDown
+#         expr: up == 0
+#         for: 2m
+#         labels:
+#           severity: critical
+#         annotations:
+#           summary: "{{ $labels.service }} is DOWN"
+#           description: "Service {{ $labels.service }} ({{ $labels.component }}) has been down for more than 2 minutes"
+#           runbook_url: "https://wiki.erp-school.id/runbooks/service-down"
+#
+#       - alert: BackendDown
+#         expr: up{job="backend"} == 0
+#         for: 1m
+#         labels:
+#           severity: critical
+#           component: backend
+#         annotations:
+#           summary: "Backend API is DOWN"
+#           description: "The Go backend API server is not responding"
+#
+#       - alert: FrontendDown
+#         expr: up{job="frontend"} == 0
+#         for: 1m
+#         labels:
+#           severity: critical
+#           component: frontend
+#         annotations:
+#           summary: "Frontend SSR is DOWN"
+#           description: "The Nuxt frontend server is not responding"
+#
+#       - alert: DatabaseDown
+#         expr: up{service="postgresql"} == 0
+#         for: 1m
+#         labels:
+#           severity: critical
+#           component: database
+#         annotations:
+#           summary: "PostgreSQL is DOWN"
+#           description: "The database server is not responding"
+#
+#       # ---- High Error Rate Alerts ----
+#       - alert: HighErrorRate
+#         expr: rate(http_requests_total{job="backend",status=~"5.."}[5m]) / rate(http_requests_total{job="backend"}[5m]) > 0.05
+#         for: 5m
+#         labels:
+#           severity: critical
+#           component: backend
+#         annotations:
+#           summary: "High 5xx error rate on backend"
+#           description: "Backend 5xx error rate is above 5% for 5 minutes (current: {{ $value | humanizePercentage }})"
+#           runbook_url: "https://wiki.erp-school.id/runbooks/high-error-rate"
+#
+#       - alert: High4xxRate
+#         expr: rate(http_requests_total{job="backend",status=~"4.."}[5m]) / rate(http_requests_total{job="backend"}[5m]) > 0.20
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: backend
+#         annotations:
+#           summary: "Elevated 4xx error rate on backend"
+#           description: "Backend 4xx error rate is above 20% for 5 minutes"
+#
+#       # ---- Database Connection Pool Alerts ----
+#       - alert: DatabaseConnectionPoolExhaustion
+#         expr: db_connections_open{job="backend"} / db_connections_max{job="backend"} > 0.85
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: database
+#         annotations:
+#           summary: "Database connection pool nearing exhaustion"
+#           description: "Database connections at {{ $value | humanizePercentage }} of maximum"
+#           runbook_url: "https://wiki.erp-school.id/runbooks/db-pool-exhaustion"
+#
+#       - alert: DatabaseConnectionPoolFull
+#         expr: db_connections_open{job="backend"} / db_connections_max{job="backend"} > 0.95
+#         for: 2m
+#         labels:
+#           severity: critical
+#           component: database
+#         annotations:
+#           summary: "Database connection pool exhausted"
+#           description: "Database connections at {{ $value | humanizePercentage }} of maximum - new connections will fail"
+#
+#       # ---- Slow Queries ----
+#       - alert: SlowDatabaseQueries
+#         expr: histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 1
+#         for: 10m
+#         labels:
+#           severity: warning
+#           component: database
+#         annotations:
+#           summary: "Slow database queries detected"
+#           description: "P95 query latency is above 1 second for 10 minutes"
+#
+#       # ---- Redis Alerts ----
+#       - alert: RedisDown
+#         expr: up{service="redis"} == 0
+#         for: 1m
+#         labels:
+#           severity: critical
+#           component: cache
+#         annotations:
+#           summary: "Redis is DOWN"
+#           description: "Cache and session store is unavailable"
+#
+#       - alert: RedisHighMemory
+#         expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: cache
+#         annotations:
+#           summary: "Redis memory usage high"
+#           description: "Redis using {{ $value | humanizePercentage }} of max memory"
+#
+#       # ---- AI Gateway Alerts ----
+#       - alert: AIGatewayDown
+#         expr: up{job="ai-gateway"} == 0
+#         for: 2m
+#         labels:
+#           severity: warning
+#           component: ai
+#         annotations:
+#           summary: "AI Gateway is DOWN"
+#           description: "AI features are unavailable"
+#
+#       - alert: AIProviderErrorRate
+#         expr: rate(ai_gateway_errors_total[5m]) / rate(ai_gateway_requests_total[5m]) > 0.10
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: ai
+#         annotations:
+#           summary: "High AI provider error rate"
+#           description: "AI Gateway error rate above 10% - check provider status"
+#
+#       # ---- Disk Space Alerts ----
+#       - alert: DiskSpaceLow
+#         expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+#         for: 5m
+#         labels:
+#           severity: warning
+#           component: infrastructure
+#         annotations:
+#           summary: "Low disk space"
+#           description: "Disk usage above 85% on {{ $labels.instance }}"
+#
+#       - alert: DiskSpaceCritical
+#         expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.05
+#         for: 5m
+#         labels:
+#           severity: critical
+#           component: infrastructure
+#         annotations:
+#           summary: "Critical disk space"
+#           description: "Disk usage above 95% on {{ $labels.instance }}"
+#
+#       # ---- SSL Certificate Expiry ----
+#       - alert: SSLCertificateExpiring
+#         expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+#         for: 1h
+#         labels:
+#           severity: warning
+#           component: infrastructure
+#         annotations:
+#           summary: "SSL certificate expiring in less than 30 days"
+#           description: "SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+#
+#       # ---- High Request Latency ----
+#       - alert: HighLatency
+#         expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="backend"}[5m])) > 2
+#         for: 10m
+#         labels:
+#           severity: warning
+#           component: backend
+#         annotations:
+#           summary: "High API latency"
+#           description: "P95 request latency is above 2 seconds for 10 minutes"

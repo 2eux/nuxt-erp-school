@@ -1,0 +1,111 @@
+# =============================================================================
+# Islamic School ERP - Grafana Datasources Configuration
+# =============================================================================
+# Configures data sources for Prometheus (metrics), PostgreSQL (business data),
+# and Loki (logs) for comprehensive observability.
+# =============================================================================
+
+apiVersion: 1
+
+# Delete any datasources not listed here on startup
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: PostgreSQL
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
+datasources:
+  # ---------------------------------------------------------------------------
+  # Prometheus - Time-series metrics (primary observability datasource)
+  # ---------------------------------------------------------------------------
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    uid: prometheus-erp
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.55.1
+      # Exemplar support for trace-metrics correlation
+      exemplarTraceIdDestinations:
+        - name: traceID
+          datasourceUid: jaeger_erp
+      # Disable alert manager UI (managed via config file)
+      disableAlertManagerUI: true
+      # Custom query parameters
+      customQueryParameters: ""
+      # Cache level for query optimization
+      cacheLevel: "High"
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL - Business data for SQL-based dashboards
+  # ---------------------------------------------------------------------------
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    uid: postgresql-erp
+    user: ${DB_USER:-erp_admin}
+    database: ${DB_NAME:-erp_school}
+    editable: false
+    secureJsonData:
+      password: ${DB_PASSWORD:-change_me_in_production}
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 1600
+      timescaledb: false
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 300
+      # Only allow read queries for Grafana dashboards
+      # (use a read-only DB user in production)
+      tlsAuth: false
+      tlsAuthWithCACert: false
+      tlsConfigurationMethod: "file-path"
+      tlsSkipVerify: true
+
+  # ---------------------------------------------------------------------------
+  # Loki - Log aggregation (optional, uncomment when Loki is deployed)
+  # ---------------------------------------------------------------------------
+  # - name: Loki
+  #   type: loki
+  #   access: proxy
+  #   url: http://loki:3100
+  #   uid: loki-erp
+  #   editable: false
+  #   jsonData:
+  #     maxLines: 1000
+  #     derivedFields:
+  #       - datasourceUid: jaeger_erp
+  #         matcherRegex: "trace_id=(\\w+)"
+  #         name: TraceID
+  #         url: "$${__value.raw}"
+
+  # ---------------------------------------------------------------------------
+  # Jaeger - Distributed tracing (for Grafana Explore)
+  # ---------------------------------------------------------------------------
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    uid: jaeger_erp
+    editable: false
+    jsonData:
+      nodeGraph:
+        enabled: true
+      tracesToLogsV2:
+        customQuery: false
+        datasourceUid: loki-erp
+        filterBySpanID: false
+        filterByTraceID: false
+        spanEndTimeShift: 100ms
+        spanStartTimeShift: -100ms
+        tags: []

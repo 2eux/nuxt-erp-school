@@ -1,0 +1,530 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "datasource", "uid": "grafana" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": { "limit": 100, "matchAny": false, "tags": [], "type": "dashboard" },
+        "type": "dashboard"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+        "enable": true,
+        "iconColor": "red",
+        "name": "Deployments",
+        "target": { "expr": "erp_deployment_timestamp", "legendFormat": "{{version}}" },
+        "tags": ["deployment"]
+      }
+    ]
+  },
+  "description": "Islamic School ERP - System Overview Dashboard",
+  "editable": false,
+  "fiscalYearStartMonth": 7,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "title": "API Documentation",
+      "tooltip": "Swagger API Docs",
+      "type": "link",
+      "url": "https://api.erp-school.id/swagger/index.html"
+    },
+    {
+      "asDropdown": true,
+      "icon": "dashboard",
+      "tags": ["erp"],
+      "title": "ERP Dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "System Health Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "1": { "text": "UP" }, "0": { "text": "DOWN" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true, "text": {} },
+      "pluginVersion": "11.3.0",
+      "targets": [{ "expr": "up{project=\"erp-school\"}", "legendFormat": "{{service}}", "refId": "A" }],
+      "title": "Service Status",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 50 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [
+        { "expr": "avg(rate(process_cpu_seconds_total{job=\"backend\"}[5m])) * 100", "legendFormat": "Backend CPU", "refId": "A" },
+        { "expr": "avg(rate(process_cpu_seconds_total{job=\"frontend\"}[5m])) * 100", "legendFormat": "Frontend CPU", "refId": "B" }
+      ],
+      "title": "CPU Usage %",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 1 },
+      "id": 3,
+      "options": { "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [
+        { "expr": "(process_resident_memory_bytes{job=\"backend\"} / 1073741824) * 100", "legendFormat": "Backend Memory", "refId": "A" }
+      ],
+      "title": "Memory Usage %",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 20, "lineWidth": 2, "pointSize": 5, "spanNulls": false },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 10, "x": 14, "y": 1 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "rate(http_requests_total{job=\"backend\"}[5m])", "legendFormat": "{{method}} {{status}}", "refId": "A" }
+      ],
+      "title": "API Request Rate (req/s)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 200,
+      "panels": [],
+      "title": "API Performance",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2, "pointSize": 5, "spanNulls": true },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m]))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.90, rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m]))", "legendFormat": "P90", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m]))", "legendFormat": "P99", "refId": "C" }
+      ],
+      "title": "API Response Time (Latency Percentiles)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "red", "value": 99 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 7 },
+      "id": 6,
+      "options": { "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{job=\"backend\",status!~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"backend\"}[5m])) * 100", "legendFormat": "Success Rate", "refId": "A" }
+      ],
+      "title": "API Success Rate",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 10, "stacking": { "group": "A", "mode": "normal" }, "lineWidth": 1, "pointSize": 3 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 7 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{job=\"backend\"}[5m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }
+      ],
+      "title": "requests by Status Code",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 300,
+      "panels": [],
+      "title": "Database & Cache",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 16 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "db_connections_open{job=\"backend\"}", "legendFormat": "Active Connections", "refId": "A" },
+        { "expr": "db_connections_idle{job=\"backend\"}", "legendFormat": "Idle Connections", "refId": "B" },
+        { "expr": "db_connections_max{job=\"backend\"}", "legendFormat": "Max Connections", "refId": "C" }
+      ],
+      "title": "Database Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 16 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(db_query_duration_seconds_bucket[5m]))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m]))", "legendFormat": "P95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(db_query_duration_seconds_bucket[5m]))", "legendFormat": "P99", "refId": "C" }
+      ],
+      "title": "Database Query Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "redis_connected_clients", "legendFormat": "Connected Clients", "refId": "A" },
+        { "expr": "redis_memory_used_bytes / 1048576", "legendFormat": "Memory (MB)", "refId": "B" },
+        { "expr": "rate(redis_commands_processed_total[5m])", "legendFormat": "Commands/sec", "refId": "C" }
+      ],
+      "title": "Redis Metrics",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 400,
+      "panels": [],
+      "title": "AI & Vector Database",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 24 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "rate(ai_gateway_requests_total[5m])", "legendFormat": "Requests/sec", "refId": "A" },
+        { "expr": "rate(ai_gateway_errors_total[5m])", "legendFormat": "Errors/sec", "refId": "B" }
+      ],
+      "title": "AI Gateway Traffic",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 24 },
+      "id": 12,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(ai_gateway_request_duration_seconds_bucket[5m]))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(ai_gateway_request_duration_seconds_bucket[5m]))", "legendFormat": "P95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(ai_gateway_request_duration_seconds_bucket[5m]))", "legendFormat": "P99", "refId": "C" }
+      ],
+      "title": "AI Response Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 24 },
+      "id": 13,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "qdrant_collections_total", "legendFormat": "Collections", "refId": "A" },
+        { "expr": "qdrant_points_total", "legendFormat": "Vector Points", "refId": "B" }
+      ],
+      "title": "Qdrant Vectors",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 500,
+      "panels": [],
+      "title": "Business Metrics (from PostgreSQL)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 32 },
+      "id": 14,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "format": "table", "rawSql": "SELECT COUNT(*) AS total FROM students WHERE deleted_at IS NULL", "refId": "A" }],
+      "title": "Total Active Students",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 32 },
+      "id": 15,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "format": "table", "rawSql": "SELECT COUNT(*) AS total FROM teachers WHERE deleted_at IS NULL", "refId": "A" }],
+      "title": "Total Teachers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 32 },
+      "id": 16,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "format": "table", "rawSql": "SELECT COUNT(*) AS total FROM schools WHERE deleted_at IS NULL", "refId": "A" }],
+      "title": "Active Schools",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 80, "lineWidth": 0, "pointSize": 0 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 32 },
+      "id": 17,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "format": "table", "rawSql": "SELECT DATE_TRUNC('month', created_at) AS month, COUNT(*) AS count FROM students WHERE deleted_at IS NULL AND created_at > NOW() - INTERVAL '12 months' GROUP BY month ORDER BY month", "refId": "A" }
+      ],
+      "title": "Student Registrations (Monthly)",
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 600,
+      "panels": [],
+      "title": "Error Tracking & SLO",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "id": 18,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{job=\"backend\",status=~\"5..\"}[5m])) by (path)", "legendFormat": "{{path}}", "refId": "A" }
+      ],
+      "title": "5xx Errors by Endpoint (last 24h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "max": 100,
+          "min": 99,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 99.9 }] },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 45 },
+      "id": 19,
+      "options": { "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [
+        { "expr": "(sum(rate(http_requests_total{job=\"backend\",status!~\"5..\"}[30d])) / sum(rate(http_requests_total{job=\"backend\"}[30d]))) * 100", "legendFormat": "30d Availability", "refId": "A" }
+      ],
+      "title": "API Availability (SLO: 99.9%)",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 2000 }] },
+          "unit": "ms"
+        }
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 45 },
+      "id": 20,
+      "options": { "orientation": "auto", "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"backend\"}[30d])) * 1000", "legendFormat": "P95 Latency", "refId": "A" }
+      ],
+      "title": "P95 Latency (30d)",
+      "type": "gauge"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["erp", "overview", "islamic-school"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "Production", "value": "production" },
+        "datasource": { "type": "prometheus", "uid": "prometheus-erp" },
+        "definition": "label_values(environment)",
+        "includeAll": false,
+        "label": "Environment",
+        "name": "environment",
+        "options": [],
+        "query": { "query": "label_values(environment)", "refId": "StandardVariableQuery" },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "30m", "1h"] },
+  "timezone": "browser",
+  "title": "ERP System Overview",
+  "uid": "erp-overview",
+  "version": 1,
+  "weekStart": "monday"
+}

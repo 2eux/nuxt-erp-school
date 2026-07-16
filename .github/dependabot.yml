@@ -1,0 +1,167 @@
+version: 2
+updates:
+  # =============================================================================
+  # Go modules (backend)
+  # =============================================================================
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Jakarta
+    labels:
+      - dependencies
+      - go
+      - backend
+    assignees:
+      - devops-team
+    reviewers:
+      - backend-leads
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: scope
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 10
+    target-branch: develop
+    versioning-strategy: increase
+    allow:
+      - dependency-type: direct
+    ignore:
+      # Major version updates require manual review
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # =============================================================================
+  # npm (frontend)
+  # =============================================================================
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Jakarta
+    labels:
+      - dependencies
+      - javascript
+      - frontend
+    assignees:
+      - devops-team
+    reviewers:
+      - frontend-leads
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: scope
+    groups:
+      nuxt-dependencies:
+        patterns:
+          - "nuxt"
+          - "@nuxt/*"
+          - "vue"
+          - "vue-router"
+          - "@vueuse/*"
+          - "pinia"
+          - "@pinia/*"
+        update-types:
+          - minor
+          - patch
+      ui-dependencies:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "@nuxt/ui"
+          - "@nuxtjs/color-mode"
+          - "@nuxt/image"
+          - "@nuxt/fonts"
+      dev-dependencies:
+        patterns:
+          - "eslint"
+          - "@nuxt/eslint"
+          - "typescript"
+          - "@types/*"
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      other-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "nuxt"
+          - "@nuxt/*"
+          - "vue"
+          - "vue-router"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "eslint"
+          - "typescript"
+          - "@types/*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 15
+    target-branch: develop
+    versioning-strategy: increase
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # =============================================================================
+  # GitHub Actions
+  # =============================================================================
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Jakarta
+    labels:
+      - dependencies
+      - ci-cd
+    assignees:
+      - devops-team
+    commit-message:
+      prefix: "ci(deps)"
+      include: scope
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+    target-branch: develop
+
+  # =============================================================================
+  # Docker images
+  # =============================================================================
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Jakarta
+    labels:
+      - dependencies
+      - docker
+    assignees:
+      - devops-team
+    commit-message:
+      prefix: "chore(docker)"
+      include: scope
+    ignore:
+      # Distroless and nginx base images should be updated carefully
+      - dependency-name: "gcr.io/distroless/static-debian12"
+        update-types:
+          - version-update:semver-major

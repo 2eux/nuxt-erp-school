@@ -1,0 +1,32 @@
+# =============================================================================
+# Islamic School ERP - Grafana Dashboard Provider Configuration
+# =============================================================================
+# Provisions dashboards from JSON files in the dashboards directory.
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  # ERP System dashboards (auto-loaded from filesystem)
+  - name: "ERP Dashboards"
+    orgId: 1
+    folder: "ERP System"
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false
+
+  # Default Grafana dashboards (for Node Exporter, etc.)
+  # - name: "Infrastructure"
+  #   orgId: 1
+  #   folder: "Infrastructure"
+  #   type: file
+  #   disableDeletion: true
+  #   updateIntervalSeconds: 30
+  #   allowUiUpdates: true
+  #   options:
+  #     path: /etc/grafana/dashboards/infrastructure
+  #     foldersFromFilesStructure: false

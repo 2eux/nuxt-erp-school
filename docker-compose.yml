@@ -1,0 +1,661 @@
+# =============================================================================
+# Islamic School ERP - Docker Compose Configuration
+# =============================================================================
+# Services: PostgreSQL, Redis, MinIO, Qdrant, Backend, Frontend, AI Gateway,
+#            Nginx, Ollama, Prometheus, Grafana, Jaeger
+# =============================================================================
+
+version: "3.9"
+
+# -------- Global top-level configuration --------
+x-common-env: &common-env
+  TZ: Asia/Jakarta
+  APP_ENV: ${APP_ENV:-production}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+# -------- Networks --------
+networks:
+  erp-network:
+    name: erp-school-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+  monitoring-network:
+    name: erp-monitoring-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+
+# -------- Volumes --------
+volumes:
+  postgres_data:
+    name: erp-postgres-data
+    driver: local
+  redis_data:
+    name: erp-redis-data
+    driver: local
+  minio_data:
+    name: erp-minio-data
+    driver: local
+  qdrant_data:
+    name: erp-qdrant-data
+    driver: local
+  ollama_data:
+    name: erp-ollama-data
+    driver: local
+  prometheus_data:
+    name: erp-prometheus-data
+    driver: local
+  grafana_data:
+    name: erp-grafana-data
+    driver: local
+  jaeger_data:
+    name: erp-jaeger-data
+    driver: local
+  nginx_logs:
+    name: erp-nginx-logs
+    driver: local
+
+# =============================================================================
+# Services
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 - Primary relational database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16.3-alpine3.20
+    container_name: erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-erp_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+      POSTGRES_DB: ${DB_NAME:-erp_school}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      # Performance tuning defaults
+      PG_SHARED_BUFFERS: 256MB
+      PG_EFFECTIVE_CACHE_SIZE: 1GB
+      PG_MAINTENANCE_WORK_MEM: 64MB
+      PG_WAL_LEVEL: replica
+      PG_MAX_WAL_SENDERS: 3
+      PG_MAX_CONNECTIONS: 200
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Mount init scripts for extensions (pg_trgm, uuid-ossp, etc.)
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - erp-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-erp_admin} -d ${DB_NAME:-erp_school}"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    # Security: run as non-root postgres user (already default in image)
+    user: "999:999"
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 - Cache, sessions, rate limiting, job queues, pub/sub
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine3.20
+    container_name: erp-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --requirepass ${REDIS_PASSWORD:-redis_secure_password}
+      --databases 16
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - erp-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secure_password}", "ping"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    sysctls:
+      # Redis recommended kernel settings
+      net.core.somaxconn: 1024
+      vm.overcommit_memory: 1
+
+  # ---------------------------------------------------------------------------
+  # MinIO - S3-compatible object storage (student documents, reports, uploads)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: erp-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change_me_minio_pass}
+      MINIO_BROWSER_REDIRECT_URL: https://minio.${DOMAIN:-localhost}
+      MINIO_SERVER_URL: https://s3.${DOMAIN:-localhost}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - erp-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Qdrant - Vector database for AI/RAG (semantic search, recommendations)
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: erp-qdrant
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__LOG_LEVEL: INFO
+      QDRANT__STORAGE__STORAGE_PATH: /qdrant/storage
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-qdrant_dev_key}
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    networks:
+      - erp-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Backend - Go API server (Gin framework)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+        GO_VERSION: "1.23"
+    image: erp-school-backend:${APP_VERSION:-latest}
+    container_name: erp-backend
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      # App
+      APP_NAME: erp-school-backend
+      APP_PORT: 8080
+      APP_DEBUG: "${APP_DEBUG:-false}"
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-erp_admin}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+      DB_NAME: ${DB_NAME:-erp_school}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_MAX_OPEN_CONNS: 50
+      DB_MAX_IDLE_CONNS: 10
+      DB_CONN_MAX_LIFETIME: 5m
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_secure_password}
+      REDIS_DB: 0
+      REDIS_POOL_SIZE: 20
+      # MinIO
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change_me_minio_pass}
+      MINIO_BUCKET: ${MINIO_BUCKET:-erp-school}
+      MINIO_USE_SSL: false
+      MINIO_REGION: us-east-1
+      # JWT
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change_me_jwt_access_secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_jwt_refresh_secret}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 168h
+      JWT_ISSUER: erp-school
+      # AI
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
+      AI_OPENAI_ENDPOINT: ${AI_OPENAI_ENDPOINT:-https://api.openai.com/v1}
+      AI_GEMINI_KEY: ${AI_GEMINI_KEY:-}
+      AI_CLAUDE_KEY: ${AI_CLAUDE_KEY:-}
+      AI_OLLAMA_ENDPOINT: http://ollama:11434
+      AI_QDRANT_HOST: qdrant
+      AI_QDRANT_PORT: 6334
+      AI_QDRANT_API_KEY: ${QDRANT_API_KEY:-qdrant_dev_key}
+      AI_DEFAULT_MODEL: gpt-4o
+      AI_EMBEDDING_MODEL: text-embedding-3-small
+      AI_MAX_TOKENS: 4096
+      AI_TEMPERATURE: 0.7
+      AI_REQUEST_TIMEOUT: 60s
+      # SMTP
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@school.id}
+      # OTEL
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: erp-backend
+    expose:
+      - "8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - erp-network
+      - monitoring-network
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    # Mount config if using file-based config
+    volumes:
+      - ./backend/configs:/app/configs:ro
+
+  # ---------------------------------------------------------------------------
+  # Frontend - Nuxt 4 application (SSR mode)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend.Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+        NODE_VERSION: "22"
+    image: erp-school-frontend:${APP_VERSION:-latest}
+    container_name: erp-frontend
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      NUXT_PUBLIC_API_BASE: ${API_BASE_URL:-https://api.erp-school.id}
+      NUXT_PUBLIC_SITE_URL: ${SITE_URL:-https://erp-school.id}
+      NUXT_PUBLIC_APP_NAME: "Islamic School ERP"
+      NUXT_PUBLIC_APP_VERSION: ${APP_VERSION:-1.0.0}
+      # HOST and PORT for Nuxt server
+      HOST: 0.0.0.0
+      PORT: 3000
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: 3000
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    networks:
+      - erp-network
+      - monitoring-network
+    logging: *default-logging
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/_health"]
+      <<: *healthcheck-defaults
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+  # ---------------------------------------------------------------------------
+  # AI Gateway - AI orchestration service (prompt routing, rate limiting, caching)
+  # ---------------------------------------------------------------------------
+  ai-gateway:
+    build:
+      context: ./ai-gateway
+      dockerfile: ../docker/ai-gateway.Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+        GO_VERSION: "1.23"
+    image: erp-school-ai-gateway:${APP_VERSION:-latest}
+    container_name: erp-ai-gateway
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      APP_PORT: 8081
+      APP_NAME: erp-ai-gateway
+      APP_DEBUG: "${APP_DEBUG:-false}"
+      # Redis for caching AI responses
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_secure_password}
+      # AI Provider configuration
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
+      AI_OPENAI_ENDPOINT: ${AI_OPENAI_ENDPOINT:-https://api.openai.com/v1}
+      AI_GEMINI_KEY: ${AI_GEMINI_KEY:-}
+      AI_CLAUDE_KEY: ${AI_CLAUDE_KEY:-}
+      AI_OLLAMA_ENDPOINT: http://ollama:11434
+      AI_DEFAULT_MODEL: gpt-4o
+      AI_EMBEDDING_MODEL: text-embedding-3-small
+      AI_MAX_TOKENS: 4096
+      AI_TEMPERATURE: 0.7
+      # Qdrant
+      AI_QDRANT_HOST: qdrant
+      AI_QDRANT_PORT: 6334
+      AI_QDRANT_API_KEY: ${QDRANT_API_KEY:-qdrant_dev_key}
+      # Rate limiting
+      AI_RATE_LIMIT_PER_MINUTE: 60
+      AI_CACHE_TTL: 3600
+      # OTEL
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: erp-ai-gateway
+    expose:
+      - "8081"
+    ports:
+      - "8081:8081"
+    networks:
+      - erp-network
+      - monitoring-network
+    logging: *default-logging
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Nginx - Reverse proxy and SSL termination
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27.3-alpine3.20
+    container_name: erp-nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+      - ./frontend/public:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - erp-network
+      - monitoring-network
+    logging: *default-logging
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+      ai-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # Ollama - Local LLM server (optional, for offline/self-hosted AI)
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:0.5.1
+    container_name: erp-ollama
+    restart: unless-stopped
+    profiles:
+      - ai-full
+      - ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 5m
+      OLLAMA_NUM_PARALLEL: 4
+      OLLAMA_MAX_LOADED_MODELS: 2
+    volumes:
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
+    ports:
+      - "11434:11434"
+    networks:
+      - erp-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      <<: *healthcheck-defaults
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
+        reservations:
+          cpus: "1"
+          memory: 2G
+    # Note: Requires GPU for production performance; CPU-only is slow.
+    # To use GPU, uncomment:
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ---------------------------------------------------------------------------
+  # Prometheus - Metrics collection and alerting
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: erp-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.retention.size=10GB"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    expose:
+      - "9090"
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    # Mount alert rules file
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  # ---------------------------------------------------------------------------
+  # Grafana - Dashboards and visualization
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: erp-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-change_me_grafana_pass}
+      GF_SERVER_ROOT_URL: https://monitoring.${DOMAIN:-localhost}
+      GF_SERVER_DOMAIN: monitoring.${DOMAIN:-localhost}
+      GF_INSTALL_PLUGINS: "grafana-clock-panel,grafana-simple-json-datasource"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_LOG_MODE: console
+      GF_LOG_LEVEL: info
+      # SMTP for alert notifications
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}:${SMTP_PORT:-587}
+      GF_SMTP_USER: ${SMTP_USERNAME:-}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${SMTP_FROM:-noreply@school.id}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./docker/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
+    expose:
+      - "3000"
+    ports:
+      - "3001:3000"
+    networks:
+      - monitoring-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      <<: *healthcheck-defaults
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  # ---------------------------------------------------------------------------
+  # Jaeger - OpenTelemetry distributed tracing
+  # ---------------------------------------------------------------------------
+  jaeger:
+    image: jaegertracing/all-in-one:1.63.0
+    container_name: erp-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_OTLP_HTTP_PORT: 4318
+      COLLECTOR_ZIPKIN_HOST_PORT: 9411
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_KEY: /badger/data
+      BADGER_DIRECTORY_VALUE: /badger/data
+      QUERY_BASE_PATH: /jaeger
+    volumes:
+      - jaeger_data:/badger
+    expose:
+      - "4317"   # OTLP gRPC
+      - "4318"   # OTLP HTTP
+      - "16686"  # Query UI
+      - "9411"   # Zipkin
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - monitoring-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:16686/"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M

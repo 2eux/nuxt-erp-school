@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-brand-50: #ecfdf5;
+    --color-brand-100: #d1fae5;
+    --color-brand-200: #a7f3d0;
+    --color-brand-300: #6ee7b7;
+    --color-brand-400: #34d399;
+    --color-brand-500: #10b981;
+    --color-brand-600: #059669;
+    --color-brand-700: #047857;
+    --color-brand-800: #065f46;
+    --color-brand-900: #064e3b;
+    --color-brand-950: #022c22;
+
+    --color-gold-50: #fffbeb;
+    --color-gold-100: #fef3c7;
+    --color-gold-200: #fde68a;
+    --color-gold-300: #fcd34d;
+    --color-gold-400: #fbbf24;
+    --color-gold-500: #f59e0b;
+    --color-gold-600: #d97706;
+    --color-gold-700: #b45309;
+    --color-gold-800: #92400e;
+    --color-gold-900: #78350f;
+    --color-gold-950: #451a03;
+  }
+
+  *,
+  *::before,
+  *::after {
+    @apply border-gray-200 dark:border-gray-700;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  .font-arabic {
+    font-family: 'Amiri', serif;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-md hover:border-brand-200 dark:hover:border-brand-800;
+  }
+
+  .card-header {
+    @apply flex items-center justify-between mb-4 pb-4 border-b border-gray-100 dark:border-gray-700;
+  }
+
+  .card-title {
+    @apply text-lg font-semibold text-gray-900 dark:text-white;
+  }
+
+  .section-title {
+    @apply text-xl font-bold text-gray-900 dark:text-white mb-1;
+  }
+
+  .section-subtitle {
+    @apply text-sm text-gray-500 dark:text-gray-400;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400;
+  }
+
+  .badge-error {
+    @apply badge bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400;
+  }
+
+  .badge-info {
+    @apply badge bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400;
+  }
+
+  .badge-neutral {
+    @apply badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300;
+  }
+
+  .islamic-pattern {
+    background-color: #047857;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5 L35 15 L45 15 L38 22 L41 32 L30 26 L19 32 L22 22 L15 15 L25 15 Z' fill='rgba(255,255,255,0.05)'/%3E%3C/svg%3E");
+  }
+
+  .page-transition-enter-active,
+  .page-transition-leave-active {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .page-transition-enter-from {
+    @apply opacity-0 translate-y-2;
+  }
+
+  .page-transition-leave-to {
+    @apply opacity-0 -translate-y-2;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

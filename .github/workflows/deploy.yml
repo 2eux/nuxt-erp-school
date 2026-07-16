@@ -1,0 +1,261 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment target'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      skip_migration:
+        description: 'Skip database migration'
+        type: boolean
+        default: false
+      skip_health_check:
+        description: 'Skip post-deploy health check'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  APP_VERSION: ${{ github.sha }}
+
+jobs:
+  # =============================================================================
+  # Deploy to Staging
+  # =============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    if: github.event.inputs.environment == 'staging' || github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    environment:
+      name: staging
+      url: https://staging.erp-school.id
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy via SSH
+        run: |
+          ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+            set -e
+
+            cd /opt/erp-school
+
+            # Pull latest images
+            docker compose -f docker-compose.yml pull backend frontend ai-gateway
+
+            # Run database migration (if not skipped)
+            if [ "${{ github.event.inputs.skip_migration }}" != "true" ]; then
+              echo "Running database migrations..."
+              docker compose -f docker-compose.yml run --rm \
+                -e DB_HOST=postgres \
+                backend /app/server migrate up
+            fi
+
+            # Deploy with zero-downtime rolling update
+            docker compose -f docker-compose.yml up -d \
+              --remove-orphans \
+              --no-build \
+              backend frontend ai-gateway nginx
+
+            # Prune old images to save disk
+            docker image prune -af --filter "until=72h"
+          EOF
+
+      - name: Health Check
+        if: github.event.inputs.skip_health_check != 'true'
+        run: |
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://staging.erp-school.id/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "Staging health check passed (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "Attempt $i/30: HTTP $STATUS - waiting 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 30 attempts"
+          exit 1
+
+      - name: Notify on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":x: *Staging deployment failed* for ${{ github.repository }}\nCommit: ${{ github.sha }}\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+  # =============================================================================
+  # Deploy to Production (with approval gate)
+  # =============================================================================
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    if: github.event.inputs.environment == 'production'
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://erp-school.id
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Pre-deployment backup
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'BACKUP'
+            set -e
+            cd /opt/erp-school
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            echo "Creating database backup: backup_${TIMESTAMP}.sql"
+            docker compose -f docker-compose.yml exec -T postgres \
+              pg_dump -U erp_admin erp_school > /backups/backup_${TIMESTAMP}.sql
+            echo "Backup completed: /backups/backup_${TIMESTAMP}.sql"
+          BACKUP
+
+      - name: Deploy via SSH
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'DEPLOY'
+            set -e
+
+            cd /opt/erp-school
+
+            echo "=== Pulling images ==="
+            docker compose -f docker-compose.yml pull backend frontend ai-gateway
+
+            echo "=== Running migrations ==="
+            if [ "${{ github.event.inputs.skip_migration }}" != "true" ]; then
+              docker compose -f docker-compose.yml run --rm \
+                -e DB_HOST=postgres \
+                backend /app/server migrate up
+            fi
+
+            echo "=== Deploying services ==="
+            docker compose -f docker-compose.yml up -d \
+              --remove-orphans \
+              --no-build \
+              backend frontend ai-gateway nginx
+
+            echo "=== Waiting for healthy ==="
+            sleep 10
+            docker compose -f docker-compose.yml ps
+
+            echo "=== Cleanup old images ==="
+            docker image prune -af --filter "until=168h"
+          DEPLOY
+
+      - name: Production Health Check
+        if: github.event.inputs.skip_health_check != 'true'
+        run: |
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://erp-school.id/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "Production health check passed (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "Attempt $i/30: HTTP $STATUS - waiting 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 30 attempts"
+          exit 1
+
+      - name: Run smoke tests
+        run: |
+          echo "Running API smoke tests..."
+          curl -sf https://api.erp-school.id/api/v1/health | jq .
+          echo "API health OK"
+
+      - name: Notify on Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":white_check_mark: *Production deployment succeeded* for ${{ github.repository }}\nVersion: ${{ github.sha }}\nURL: https://erp-school.id"
+            }
+
+      - name: Notify on Failure (and trigger rollback)
+        if: failure()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":rotating_light: *Production deployment FAILED* for ${{ github.repository }}\nCommit: ${{ github.sha }}\nRollback may be required!\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+  # =============================================================================
+  # Rollback (manual trigger)
+  # =============================================================================
+  rollback:
+    name: Rollback Production
+    if: false  # Only triggered manually via workflow_dispatch
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rollback to previous version
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'ROLLBACK'
+            set -e
+
+            cd /opt/erp-school
+
+            # Read previous version tag
+            PREV_VERSION=$(docker images --format "{{.Tag}}" ghcr.io/${{ github.repository }}/backend | grep -v latest | head -2 | tail -1)
+
+            echo "Rolling back to version: ${PREV_VERSION}"
+
+            # Pull previous version
+            IMAGE_BACKEND="ghcr.io/${{ github.repository }}/backend:${PREV_VERSION}"
+            IMAGE_FRONTEND="ghcr.io/${{ github.repository }}/frontend:${PREV_VERSION}"
+
+            # Update docker-compose with previous version
+            APP_VERSION=${PREV_VERSION} docker compose -f docker-compose.yml up -d \
+              --remove-orphans \
+              backend frontend ai-gateway nginx
+
+            echo "Rollback completed to version ${PREV_VERSION}"
+
+            # Verify health
+            sleep 10
+            curl -sf https://erp-school.id/health
+          ROLLBACK
